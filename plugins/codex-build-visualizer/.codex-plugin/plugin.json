@@ -1,0 +1,6 @@
+{
+  "description": "Visualize and audit observable Codex coding work as a privacy-enhanced timeline, replay dashboard, and Token-usage report.",
+  "name": "codex-build-visualizer",
+  "skills": "./skills/",
+  "version": "1.0.0"
+}

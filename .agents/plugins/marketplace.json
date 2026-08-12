@@ -1,0 +1,20 @@
+{
+  "interface": {
+    "displayName": "Codex Build Visualizer"
+  },
+  "name": "codex-build-visualizer",
+  "plugins": [
+    {
+      "category": "Productivity",
+      "name": "codex-build-visualizer",
+      "policy": {
+        "authentication": "ON_INSTALL",
+        "installation": "AVAILABLE"
+      },
+      "source": {
+        "path": "./plugins/codex-build-visualizer",
+        "source": "local"
+      }
+    }
+  ]
+}

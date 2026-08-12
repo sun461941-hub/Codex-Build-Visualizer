@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-Rli0tghtAcCScHIOXNS/YwwVbKNSL0KOjOicHNujAWk='; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Codex Build Visualizer</title>
+  <style>
+    :root {
+      --bg: #080a0f;
+      --panel: rgba(18, 21, 30, .84);
+      --panel-solid: #12151e;
+      --line: rgba(255,255,255,.09);
+      --text: #f4f6fb;
+      --muted: #9098aa;
+      --purple: #9b7cff;
+      --blue: #55b8ff;
+      --green: #54dfa1;
+      --red: #ff6f79;
+      --amber: #ffbd5d;
+      --radius: 20px;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 520px at 14% -10%, rgba(155,124,255,.16), transparent 58%),
+        radial-gradient(800px 520px at 92% 2%, rgba(85,184,255,.11), transparent 55%),
+        var(--bg);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .16;
+      background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(to bottom, black, transparent 70%);
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    .shell { width: min(1480px, calc(100% - 36px)); margin: 0 auto; padding: 30px 0 42px; position: relative; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 18px; }
+    .mark {
+      width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+      background: linear-gradient(145deg, var(--purple), #6c54e8 55%, #4938ba);
+      box-shadow: 0 12px 34px rgba(125,93,255,.28), inset 0 1px rgba(255,255,255,.3);
+      font-weight: 900; font-size: 18px;
+    }
+    .brand-name { font-weight: 760; letter-spacing: -.02em; font-size: 15px; }
+    .eyebrow { color: var(--muted); font-size: 12px; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { font-size: clamp(26px, 3.1vw, 44px); line-height: 1.06; letter-spacing: -.045em; margin: 0; max-width: 880px; }
+    .project { color: var(--muted); margin-top: 10px; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 9px; padding-top: 4px; max-width: 100%; }
+    .pill, .icon-button {
+      min-height: 38px; border: 1px solid var(--line); border-radius: 999px; background: rgba(17,20,29,.7);
+      backdrop-filter: blur(16px); display: inline-flex; align-items: center; gap: 8px; padding: 0 13px;
+    }
+    .icon-button { cursor: pointer; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 5px rgba(84,223,161,.11); }
+    .live-dot.done { background: var(--purple); box-shadow: 0 0 0 5px rgba(155,124,255,.11); }
+    .stats { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
+    .card {
+      border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+      box-shadow: 0 20px 60px rgba(0,0,0,.18); backdrop-filter: blur(18px);
+    }
+    .stat { padding: 17px 18px; min-height: 104px; position: relative; overflow: hidden; }
+    .stat::after { content: ""; position: absolute; width: 70px; height: 70px; right: -22px; top: -24px; border-radius: 50%; background: var(--accent, var(--purple)); filter: blur(28px); opacity: .18; }
+    .stat-label { color: var(--muted); font-size: 12px; margin-bottom: 11px; }
+    .stat-value { font-size: 25px; font-weight: 760; letter-spacing: -.035em; }
+    .stat-note { color: var(--muted); font-size: 12px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .8fr); gap: 14px; align-items: start; }
+    .stack { display: grid; gap: 14px; min-width: 0; }
+    .section { overflow: hidden; }
+    .section-head { padding: 17px 19px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+    .section-title { font-weight: 700; letter-spacing: -.015em; }
+    .count { color: var(--muted); font-size: 12px; }
+    .plan-list { padding: 9px; display: grid; gap: 4px; }
+    .plan-row { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 9px; min-height: 40px; border-radius: 12px; padding: 7px 9px; }
+    .plan-row:hover { background: rgba(255,255,255,.035); }
+    .plan-check { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; color: #07120d; font-size: 11px; }
+    .plan-check.completed { background: var(--green); border-color: var(--green); }
+    .plan-check.in_progress { border-color: var(--purple); box-shadow: inset 0 0 0 5px rgba(155,124,255,.2); }
+    .plan-check.blocked { background: var(--red); border-color: var(--red); }
+    .plan-state { color: var(--muted); font-size: 11px; }
+    .progress-track { height: 6px; margin: 0 18px 17px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--purple), var(--blue)); box-shadow: 0 0 18px rgba(99,177,255,.3); transition: width .35s ease; }
+    .timeline { padding: 7px 12px 14px; max-height: 690px; overflow: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent; }
+    .timeline-tools { padding: 12px 16px; display: grid; grid-template-columns: minmax(180px,1fr) repeat(3,minmax(118px,.36fr)); gap: 8px; border-bottom: 1px solid var(--line); }
+    .field { display: grid; gap: 4px; min-width: 0; }
+    .field > span { color: var(--muted); font-size: 10px; }
+    .field input, .field select { width: 100%; min-height: 38px; color: var(--text); background: #0c0f16; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; }
+    .field select { cursor: pointer; }
+    .timeline-summary { padding: 8px 16px 0; color: var(--muted); font-size: 11px; }
+    .pagination { padding: 9px 16px 14px; display: flex; align-items: center; justify-content: center; gap: 10px; border-top: 1px solid var(--line); }
+    .page-button { min-height: 34px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.045); padding: 0 11px; cursor: pointer; }
+    .page-button:disabled { opacity: .38; cursor: default; }
+    .page-label { color: var(--muted); min-width: 92px; text-align: center; font: 11px ui-monospace, monospace; }
+    .retention-warning { margin: 12px 16px 0; padding: 10px 12px; border: 1px solid rgba(251,191,36,.35); border-radius: 10px; color: #fde68a; background: rgba(120,53,15,.22); font-size: 12px; line-height: 1.45; }
+    .event { position: relative; display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 10px; padding: 10px 4px; }
+    .event:not(:last-child)::before { content: ""; position: absolute; left: 24px; top: 47px; bottom: -4px; width: 1px; background: linear-gradient(var(--line), transparent); }
+    .event-icon { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.045); border: 1px solid var(--line); z-index: 1; }
+    .event.success .event-icon { color: var(--green); background: rgba(84,223,161,.08); border-color: rgba(84,223,161,.2); }
+    .event.failure .event-icon { color: var(--red); background: rgba(255,111,121,.08); border-color: rgba(255,111,121,.2); }
+    .event.running .event-icon { color: var(--purple); background: rgba(155,124,255,.09); border-color: rgba(155,124,255,.22); }
+    .event-main { min-width: 0; padding-top: 1px; }
+    .event-meta { display: flex; gap: 9px; align-items: baseline; margin-bottom: 3px; }
+    .event-title { font-weight: 650; overflow-wrap: anywhere; }
+    .event-time { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+    .event-status, .run-status-label { color: var(--muted); font: 700 9px/1.3 ui-monospace, monospace; letter-spacing: .04em; text-transform: uppercase; }
+    .event-detail { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .event-command { margin-top: 7px; color: #cbd1df; background: #0a0c12; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-x: auto; }
+    .event-output { margin: 7px 0 0; max-height: 180px; overflow: auto; color: #b8c1d4; background: #080a0f; border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+    .evidence { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .evidence span { border: 1px solid rgba(84,223,161,.18); background: rgba(84,223,161,.07); color: #a9eccc; border-radius: 999px; padding: 2px 7px; font: 10px/1.4 ui-monospace, monospace; }
+    .file-list, .run-list { padding: 8px; max-height: 385px; overflow: auto; }
+    .file-row { display: grid; grid-template-columns: 23px minmax(0,1fr) auto; gap: 7px; align-items: center; padding: 8px 7px; border-radius: 10px; }
+    .file-row:hover { background: rgba(255,255,255,.035); }
+    .file-type { font: 700 10px/20px ui-monospace, monospace; text-align: center; width: 20px; height: 20px; border-radius: 6px; }
+    .file-type.added { color: var(--green); background: rgba(84,223,161,.1); }
+    .file-type.modified { color: var(--amber); background: rgba(255,189,93,.1); }
+    .file-type.deleted { color: var(--red); background: rgba(255,111,121,.1); }
+    .file-name { font: 11.5px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .delta { font: 11px ui-monospace, monospace; white-space: nowrap; }
+    .plus { color: var(--green); } .minus { color: var(--red); margin-left: 5px; }
+    .run-row { padding: 10px; border-radius: 12px; border-bottom: 1px solid rgba(255,255,255,.05); }
+    .run-top { display: flex; align-items: center; gap: 8px; }
+    .run-status { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .run-status.success { background: var(--green); } .run-status.failure { background: var(--red); }
+    .run-title { font-weight: 650; min-width: 0; flex: 1; }
+    .run-duration { color: var(--muted); font-size: 11px; }
+    .run-command { color: var(--muted); font: 11px/1.4 ui-monospace, monospace; margin: 5px 0 0 16px; word-break: break-all; }
+    .token-body { padding: 16px; }
+    .quality-badge { border: 1px solid rgba(155,124,255,.25); color: #cbbfff; background: rgba(155,124,255,.09); border-radius: 999px; padding: 3px 8px; font: 700 9px/1.2 ui-monospace, monospace; letter-spacing: .08em; }
+    .quality-badge.actual { color: var(--green); border-color: rgba(84,223,161,.24); background: rgba(84,223,161,.08); }
+    .quality-badge.estimated, .quality-badge.derived { color: var(--amber); border-color: rgba(255,189,93,.24); background: rgba(255,189,93,.08); }
+    .token-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+    .token-label { color: var(--muted); font-size: 11px; }
+    .token-value { font-size: 26px; font-weight: 760; letter-spacing: -.035em; margin-top: 3px; }
+    .token-ratio { color: var(--muted); font: 12px ui-monospace, monospace; }
+    .token-bar { height: 8px; background: rgba(255,255,255,.055); border-radius: 99px; overflow: hidden; margin: 12px 0 16px; }
+    .token-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--purple),var(--blue)); }
+    .token-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+    .activity-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 14px; }
+    .activity-metric { border: 1px solid rgba(255,255,255,.055); border-radius: 11px; padding: 10px; }
+    .activity-value { margin-top: 3px; font: 700 17px/1.2 ui-monospace, monospace; }
+    .token-metric { border: 1px solid rgba(255,255,255,.055); border-radius: 11px; padding: 9px 10px; min-width: 0; }
+    .token-metric-value { font: 650 14px/1.3 ui-monospace, monospace; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mini-quality { color: var(--muted); font: 700 8px ui-monospace, monospace; margin-left: 4px; vertical-align: 2px; }
+    .token-source { margin-top: 12px; color: var(--muted); font-size: 10.5px; overflow-wrap: anywhere; }
+    .trend-wrap { padding: 14px 16px 16px; border-top: 1px solid var(--line); }
+    .trend-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-weight: 650; font-size: 12px; }
+    .trend-chart { width: 100%; height: 112px; display: block; border: 1px solid rgba(255,255,255,.055); border-radius: 11px; background: rgba(0,0,0,.12); }
+    .trend-grid { stroke: rgba(255,255,255,.07); stroke-width: 1; }
+    .trend-line { fill: none; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+    .trend-line.model-input { stroke: var(--blue); }
+    .trend-line.effective-user { stroke: var(--purple); }
+    .trend-line.saved { stroke: var(--green); }
+    .trend-line.estimated, .trend-line.derived { stroke-dasharray: 5 4; }
+    .trend-dot { vector-effect: non-scaling-stroke; }
+    .trend-dot.model-input { color: var(--blue); }
+    .trend-dot.effective-user { color: var(--purple); }
+    .trend-dot.saved { color: var(--green); }
+    .trend-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 10px; }
+    .trend-key::before { content: ""; display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: 3px; background: var(--key); }
+    .data-table-wrap { overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    .data-table th, .data-table td { padding: 6px 7px; text-align: right; border-top: 1px solid rgba(255,255,255,.055); white-space: nowrap; }
+    .data-table th:first-child, .data-table td:first-child { text-align: left; }
+    .data-table th { color: var(--muted); font-weight: 600; }
+    .lane-list { padding: 8px 12px 13px; display: grid; gap: 7px; max-height: 360px; overflow: auto; }
+    .lane-row { display: grid; grid-template-columns: 74px minmax(0,1fr); gap: 8px; align-items: center; }
+    .lane-label { color: var(--muted); font: 10.5px ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lane-track { display: flex; align-items: center; gap: 4px; min-height: 32px; padding: 4px 6px; border-radius: 9px; background: rgba(255,255,255,.025); overflow-x: auto; }
+    .lane-event { flex: 0 0 auto; min-width: 27px; height: 24px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: rgba(255,255,255,.045); cursor: pointer; font: 10px ui-monospace, monospace; }
+    .lane-event.failure { color: var(--red); border-color: rgba(255,111,121,.25); }
+    .lane-event.running { color: var(--purple); border-color: rgba(155,124,255,.25); }
+    .history-body { padding: 12px 16px 16px; }
+    .history-select { width: 100%; min-height: 38px; margin-bottom: 9px; color: var(--text); background: #0c0f16; border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; }
+    .delta-good { color: var(--green); } .delta-bad { color: var(--red); }
+    .empty { color: var(--muted); padding: 24px 16px; text-align: center; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .privacy { padding: 15px 17px; color: var(--muted); font-size: 11.5px; }
+    .privacy strong { color: #c7ccda; }
+    .replay { position: sticky; z-index: 10; bottom: 14px; margin-top: 14px; padding: 13px 15px; display: grid; grid-template-columns: auto minmax(120px,1fr) auto; gap: 13px; align-items: center; background: rgba(15,18,26,.92); }
+    .play { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; background: rgba(255,255,255,.055); cursor: pointer; }
+    .play:hover { background: rgba(155,124,255,.18); }
+    .scrub { min-width: 0; }
+    input[type="range"] { width: 100%; accent-color: var(--purple); display: block; }
+    .replay-label { color: var(--muted); font-size: 11px; display: flex; justify-content: space-between; margin-top: 3px; }
+    .frame { min-width: 82px; text-align: right; font: 12px ui-monospace, monospace; color: #c9cfdd; }
+    .loading { min-height: 70vh; display: grid; place-items: center; color: var(--muted); }
+    @media (max-width: 1200px) { .stats { grid-template-columns: repeat(3,1fr); } }
+    @media (max-width: 900px) {
+      .stats { grid-template-columns: repeat(2,1fr); }
+      .layout { grid-template-columns: 1fr; }
+      .timeline { max-height: 580px; }
+      .timeline-tools { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    }
+    @media (max-width: 620px) {
+      .shell { width: min(100% - 20px, 1480px); padding-top: 18px; }
+      .topbar { display: block; }
+      .actions { margin-top: 16px; justify-content: flex-start; }
+      .pill { max-width: 100%; }
+      .pill span { overflow-wrap: anywhere; }
+      .stats { gap: 8px; }
+      .stat { min-height: 96px; padding: 14px; }
+      .stat-value { font-size: 21px; }
+      .layout, .stack { gap: 10px; }
+      .card { border-radius: 17px; }
+      .replay { bottom: 8px; grid-template-columns: auto minmax(80px,1fr); }
+      .frame { grid-column: 2; text-align: left; }
+      .timeline-tools { grid-template-columns: 1fr; }
+      .lane-row { grid-template-columns: 60px minmax(0,1fr); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app"><div class="loading">Loading build trace…</div></main>
+  <script id="codexTracePayload" type="application/json">{}</script>
+  <script src="events.js"></script>
+  <script>
+    (() => {
+      const app = document.getElementById('app');
+      const PAGE_SIZE = 100, PANEL_LIMIT = 100, LANE_LIMIT = 12, LANE_EVENT_LIMIT = 30, MAX_LANE_ALIASES = 24;
+      let embeddedPayload = null;
+      try {
+        const payloadText = document.getElementById('codexTracePayload')?.textContent || '';
+        const parsed = JSON.parse(payloadText);
+        if (parsed && typeof parsed === 'object' && parsed.standalone === true && parsed.trace && typeof parsed.trace === 'object') embeddedPayload = parsed;
+      } catch {}
+      if (embeddedPayload) {
+        window.CODEX_TRACE_STANDALONE = true;
+        window.CODEX_BUILD_TRACE = embeddedPayload.trace;
+        if (embeddedPayload.history && typeof embeddedPayload.history === 'object') window.CODEX_BUILD_HISTORY = embeddedPayload.history;
+      }
+      let data = null, cursor = 0, cursorSeq = null, live = true, playing = false, playTimer = null, languageOverride = null;
+      let query = '', kindFilter = 'all', statusFilter = 'all', laneFilter = 'all', timelinePage = 0, searchTimer = null;
+      let historyData = null, historySelection = '', laneAliases = new Map(), nextLaneNumber = 1, laneOverflowSeen = false;
+      let historyRequest = 0, historyLoading = false, historyReloadPending = false;
+      let pollTimer = null, pollBusy = false, metaSupported = null, metaFallbackPolls = 0, knownRevision = null, knownGeneration = null;
+      let resetScrollOnNextRender = false;
+      const i18n = {
+        en: { activity:'Activity', observed:'Observed activity', files:'Changed files', runs:'Checks & commands', plan:'Plan', progress:'Progress', changed:'Files changed', lines:'Line changes', checks:'Successful checks', effectiveTokens:'Effective user Tokens', tokenSaved:'Tokens avoided', tokenEfficiency:'Token efficiency', modelInput:'Model input', userVisible:'User-visible', candidateContext:'Candidate context', retainedContext:'Retained context', cachedInput:'Cached input', modelOutput:'Model output', reasoningOutput:'Reasoning output', source:'Source', method:'Method', unavailable:'Unavailable', actual:'EXACT', estimated:'ESTIMATE', derived:'DERIVED', mixed:'MIXED', replay:'Replay', replayPosition:'Replay position', live:'LIVE', complete:'COMPLETE', failed:'FAILED', privacy:'Privacy-aware trace', privacyMode:'Privacy mode', privacyText:'Shows minimized observable metadata. Known sensitive values are redacted; do not intentionally feed secrets into a trace.', retention:'older events were omitted by the bounded timeline', noEvents:'No matching events.', noFiles:'No file changes at this point.', noRuns:'No checks or commands at this point.', noTokens:'Waiting for Token telemetry…', step:'event', steps:'events', pending:'Pending', in_progress:'In progress', completed:'Completed', blocked:'Blocked', project:'Project', current:'Current', modified:'modified', added:'added', deleted:'deleted', exactDiff:'EXACT GIT DIFF', netDiff:'NET LINE DELTA', metadataDiff:'FILE METADATA', partialDiff:'PARTIAL DIFF', tools:'Tool calls', compactions:'Compactions', agents:'Subagents', observedTime:'Observed runtime', passed:'passed', failedTests:'failed', skipped:'skipped', search:'Search timeline', searchHint:'Visible titles, details, commands, and output excerpts', kind:'Type', status:'Status', lane:'Actor', all:'All', main:'Main', agent:'Agent', otherAgents:'Other Agents', page:'Page', newer:'Newer', older:'Older', matches:'matches', tokenTrend:'Token trend', tokenTrendHelp:'Token values over observable updates', time:'Time', quality:'Quality', agentLanes:'Agent lanes', laneHelp:'Only events with observable actor metadata can be assigned.', history:'Run comparison', priorRun:'Prior run', noHistory:'No privacy-filtered run history is available.', partialRun:'Partial run; deltas are disabled.', metric:'Metric', previous:'Previous', delta:'Delta', events:'Events', filesChanged:'Files changed', addedLines:'Added lines', deletedLines:'Deleted lines', modelInputTokens:'Model input Tokens', durationMetric:'Observed duration', notComparable:'Not comparable', latestLimited:'latest shown', filterResults:'Timeline filter results' },
+        zh: { activity:'工作时间线', observed:'可观察活动', files:'文件变化', runs:'检查与命令', plan:'任务计划', progress:'完成进度', changed:'已改文件', lines:'代码行变化', checks:'成功检查', effectiveTokens:'有效用户 Token', tokenSaved:'优化节省 Token', tokenEfficiency:'Token 使用效率', modelInput:'模型输入', userVisible:'用户可见', candidateContext:'候选上下文', retainedContext:'保留上下文', cachedInput:'缓存输入', modelOutput:'模型输出', reasoningOutput:'推理输出', source:'来源', method:'优化方法', unavailable:'暂无数据', actual:'精确', estimated:'估算', derived:'推导', mixed:'混合', replay:'过程回放', replayPosition:'回放位置', live:'实时', complete:'已完成', failed:'失败', privacy:'隐私增强记录', privacyMode:'隐私模式', privacyText:'仅展示最小化的可观察元数据，并遮盖已知敏感值；请勿主动将密钥输入记录。', retention:'个较早事件因时间线容量限制已省略', noEvents:'没有匹配的事件。', noFiles:'此时还没有文件变化。', noRuns:'此时还没有检查或命令。', noTokens:'正在等待 Token 数据…', step:'条事件', steps:'条事件', pending:'待处理', in_progress:'进行中', completed:'已完成', blocked:'受阻', project:'项目', current:'当前', modified:'修改', added:'新增', deleted:'删除', exactDiff:'精确 GIT 差异', netDiff:'净行数变化', metadataDiff:'仅文件元数据', partialDiff:'部分差异', tools:'工具调用', compactions:'上下文压缩', agents:'子 Agent', observedTime:'可观察运行时间', passed:'通过', failedTests:'失败', skipped:'跳过', search:'搜索时间线', searchHint:'可见标题、详情、命令和输出摘录', kind:'类型', status:'状态', lane:'执行者', all:'全部', main:'主流程', agent:'Agent', otherAgents:'其他 Agent', page:'页', newer:'较新', older:'较早', matches:'条匹配', tokenTrend:'Token 趋势', tokenTrendHelp:'可观察更新中的 Token 数值', time:'时间', quality:'质量', agentLanes:'Agent 泳道', laneHelp:'仅可将具有可观察执行者元数据的事件归入 Agent。', history:'运行对比', priorRun:'历史运行', noHistory:'暂无经过隐私过滤的运行历史。', partialRun:'运行尚不完整，已禁用差值。', metric:'指标', previous:'历史', delta:'差值', events:'事件', filesChanged:'变更文件', addedLines:'新增行', deletedLines:'删除行', modelInputTokens:'模型输入 Token', durationMetric:'可观察耗时', notComparable:'不可直接比较', latestLimited:'仅展示最近', filterResults:'时间线筛选结果' }
+      };
+      const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+      const icon = kind => ({session:'◇', plan:'✓', edit:'Δ', note:'◆', command:'›_', test:'T', build:'B', verify:'V', tokens:'◎', finish:'★', tool:'⌁', context:'C', agent:'A', approval:'?', error:'!', turn:'↳'}[kind] || '•');
+      const timeLabel = iso => { try { return new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(iso)); } catch { return ''; } };
+      const finite = value => value !== null && value !== '' && typeof value !== 'boolean' && Number.isFinite(Number(value)) ? Number(value) : null;
+      const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+      const duration = value => { const ms = finite(value); return ms == null || ms < 0 ? '' : (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(ms < 10000 ? 2 : 1)}s`); };
+      const numberOr = (value, fallback=0) => finite(value) ?? fallback;
+      const countText = (value, fallback='0') => { const number = finite(value); return number == null ? fallback : new Intl.NumberFormat().format(number); };
+      const classToken = (value, allowed, fallback='info') => allowed.includes(value) ? value : fallback;
+      const eventStatus = value => classToken(value, ['success','failure','running','info','pending','completed','blocked']);
+      const planStatus = value => classToken(value, ['pending','in_progress','completed','blocked'], 'pending');
+      const fileStatus = value => classToken(value, ['added','modified','deleted'], 'modified');
+      const qualityToken = value => classToken(value, ['actual','estimated','derived','mixed','unavailable'], 'unavailable');
+      const traceGeneration = value => value?.generation || value?.generation_order || null;
+      const currentLang = () => languageOverride || (data && data.lang) || 'en';
+      const t = key => (i18n[currentLang()] || i18n.en)[key] || key;
+      const visibleEvents = () => (data?.events || []).slice(0, cursor);
+
+      function resetUiState() {
+        query = ''; kindFilter = 'all'; statusFilter = 'all'; laneFilter = 'all'; timelinePage = 0;
+        historySelection = ''; laneAliases = new Map(); nextLaneNumber = 1; laneOverflowSeen = false;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = null;
+        resetScrollOnNextRender = true;
+      }
+
+      function rememberViewState() {
+        const active = document.activeElement;
+        const focus = !active || !active.id || !app.contains(active) ? null : {id: active.id, start: active.selectionStart, end: active.selectionEnd};
+        const scroll = {};
+        app.querySelectorAll('[data-scroll-key]').forEach(node => { scroll[node.dataset.scrollKey] = {top:node.scrollTop,left:node.scrollLeft}; });
+        return {focus, scroll};
+      }
+
+      function restoreViewState(saved) {
+        if (!saved || resetScrollOnNextRender) { resetScrollOnNextRender = false; return; }
+        Object.entries(saved.scroll || {}).forEach(([key,position]) => {
+          const target = app.querySelector(`[data-scroll-key="${key}"]`);
+          if (target) { target.scrollTop = position.top; target.scrollLeft = position.left; }
+        });
+        const focus = saved.focus;
+        if (!focus) return;
+        const target = document.getElementById(focus.id);
+        if (!target) return;
+        target.focus({preventScroll:true});
+        if (typeof target.setSelectionRange === 'function' && focus.start != null) {
+          try { target.setSelectionRange(focus.start, focus.end); } catch {}
+        }
+      }
+
+      function planAt(events) {
+        if (cursor === (data?.events || []).length && Array.isArray(data?.plan)) return data.plan;
+        const map = new Map();
+        events.filter(e => e.kind === 'plan' && e.data?.plan_id).forEach(e => map.set(e.data.plan_id, {id:e.data.plan_id,title:e.data.plan_title,status:e.data.plan_status}));
+        return [...map.values()];
+      }
+      function snapshotAt(events) {
+        const latest = [...events].reverse().find(e => e.kind === 'edit' && Array.isArray(e.data?.files));
+        if (latest) return latest.data;
+        if (cursor === (data?.events || []).length && Array.isArray(data?.latest_files) && data.latest_files.length) {
+          return {
+            files:data.latest_files,
+            file_count:data.latest_files.length,
+            added:data.latest_files.reduce((sum,file)=>sum+numberOr(file?.added),0),
+            deleted:data.latest_files.reduce((sum,file)=>sum+numberOr(file?.deleted),0),
+            diff_quality:'net'
+          };
+        }
+        return {files:[],file_count:0,added:0,deleted:0};
+      }
+      function tokensAt(events) {
+        const snapshot = [...events].reverse().find(e => e.kind === 'tokens' && e.data?.token_usage)?.data?.token_usage;
+        if (snapshot) return snapshot;
+        return cursor === (data?.events || []).length ? data?.token_usage : null;
+      }
+
+      const fmtTokens = value => { const number = finite(value); return number == null ? '—' : new Intl.NumberFormat().format(number); };
+      const testEvidence = tests => {
+        if (!tests || typeof tests !== 'object') return '';
+        const values = [
+          ['passed', t('passed')], ['failed', t('failedTests')], ['skipped', t('skipped')],
+        ].map(([key,label]) => { const value = finite(tests[key]); return value == null ? '' : `<span>${esc(countText(value))} ${esc(label)}</span>`; });
+        const coverage = finite(tests.coverage_percent);
+        if (coverage != null) values.push(`<span>${esc(countText(clamp(coverage,0,100)))}% coverage</span>`);
+        return values.some(Boolean) ? `<div class="evidence">${values.join('')}</div>` : '';
+      };
+
+      function laneKey(event) {
+        const actor = event?.actor;
+        if (actor && typeof actor.lane === 'string' && actor.lane) return `actor:${actor.lane}`;
+        if (data?.privacy_mode !== 'strict' && event?.data && typeof event.data.agent_id === 'string' && event.data.agent_id) return `legacy:${event.data.agent_id}`;
+        if (event?.kind === 'agent') return 'legacy:generic';
+        return 'main';
+      }
+
+      function ensureLaneInfo(event) {
+        const key = laneKey(event);
+        if (key === 'main') return {key, id:'main', label:t('main')};
+        if (!laneAliases.has(key)) {
+          if (laneAliases.size >= MAX_LANE_ALIASES) {
+            laneOverflowSeen = true;
+            return {key:'overflow', id:'lane-overflow', label:t('otherAgents')};
+          }
+          const number = nextLaneNumber++;
+          laneAliases.set(key, {key, id:`lane-${number}`, number});
+        }
+        const info = laneAliases.get(key);
+        return {...info, label:`${t('agent')} ${info.number}`};
+      }
+
+      function ensureLaneInfos(events) {
+        events.forEach(ensureLaneInfo);
+        const infos = [{key:'main',id:'main',label:t('main')}, ...[...laneAliases.values()].map(info => ({...info,label:`${t('agent')} ${info.number}`}))];
+        if (laneOverflowSeen) infos.push({key:'overflow',id:'lane-overflow',label:t('otherAgents')});
+        return infos;
+      }
+
+      function eventSearchText(event) {
+        const values = [event?.title, event?.detail, event?.data?.command, event?.data?.output_excerpt, t(eventStatus(event?.status))];
+        return values.filter(value => typeof value === 'string').join('\n').toLocaleLowerCase();
+      }
+
+      function filteredTimeline(events) {
+        const needle = query.trim().toLocaleLowerCase();
+        return events.filter(event => {
+          const lane = ensureLaneInfo(event);
+          return (kindFilter === 'all' || event.kind === kindFilter)
+            && (statusFilter === 'all' || eventStatus(event?.status) === statusFilter)
+            && (laneFilter === 'all' || lane.id === laneFilter)
+            && (!needle || eventSearchText(event).includes(needle));
+        });
+      }
+
+      function tokenPoints(events) {
+        const metrics = ['model_input_tokens','effective_user_tokens','saved_tokens'];
+        let raw = [];
+        if (Array.isArray(data?.token_history)) {
+          const lastSeq = events.length ? finite(events[events.length - 1]?.seq) : null;
+          raw = lastSeq == null ? [] : data.token_history.filter(point => finite(point?.seq) == null || finite(point.seq) <= lastSeq);
+        } else {
+          raw = events.filter(event => event?.kind === 'tokens' && event?.data?.token_usage).map(event => ({seq:event.seq,at:event.at,...event.data.token_usage,values:event.data.token_usage}));
+        }
+        if (!raw.length && events.length && data?.token_usage?.trends) {
+          const lastSeq = finite(events[events.length - 1]?.seq);
+          const trends = data.token_usage.trends;
+          for (const [quality, points] of [['actual',trends.actual],['estimated',trends.estimated]]) {
+            if (!Array.isArray(points)) continue;
+            points.forEach(point => {
+              const seq = finite(point?.seq);
+              if (lastSeq == null || seq == null || seq <= lastSeq) raw.push({...point,quality});
+            });
+          }
+          raw.sort((left,right) => (finite(left?.seq) || 0) - (finite(right?.seq) || 0));
+        }
+        const normalized = raw.slice(-200).map((point, index) => {
+          const values = point?.values && typeof point.values === 'object' ? point.values : point;
+          const output = {seq:finite(point?.seq) ?? index, at:point?.at || point?.updated_at || '', values:{}, quality:{}, source:{}};
+          metrics.forEach(metric => {
+            output.values[metric] = finite(values?.[metric]);
+            output.quality[metric] = String(point?.field_quality?.[metric] || values?.field_quality?.[metric] || point?.quality || values?.quality || 'unavailable');
+            output.source[metric] = String(point?.field_source?.[metric] || values?.field_source?.[metric] || point?.source || values?.source || '');
+          });
+          return output;
+        });
+        if (!normalized.length && cursor === (data?.events || []).length && data?.token_usage) {
+          const usage = data.token_usage;
+          normalized.push({seq:0,at:usage.updated_at || '',values:Object.fromEntries(metrics.map(metric => [metric,finite(usage[metric])])),quality:Object.fromEntries(metrics.map(metric => [metric,String(usage.field_quality?.[metric] || usage.quality || 'unavailable')])),source:Object.fromEntries(metrics.map(metric => [metric,String(usage.field_source?.[metric] || usage.source || '')]))});
+        }
+        return normalized;
+      }
+
+      function trendSegments(points, metric, width, height, maximum) {
+        const segments = [];
+        let current = [], signature = '';
+        points.forEach((point, index) => {
+          const value = point.values[metric];
+          if (value == null) { if (current.length) segments.push({points:current,signature}); current=[]; signature=''; return; }
+          const nextSignature = `${point.quality[metric]}|${point.source[metric]}`;
+          if (current.length && signature !== nextSignature) { segments.push({points:current,signature}); current=[]; }
+          signature = nextSignature;
+          const x = points.length === 1 ? width / 2 : 8 + index * (width - 16) / (points.length - 1);
+          const y = height - 8 - (clamp(value,0,maximum) / maximum) * (height - 16);
+          current.push([x,y]);
+        });
+        if (current.length) segments.push({points:current,signature});
+        return segments;
+      }
+
+      function tokenTrendPanel(points) {
+        if (!points.length) return `<div class="empty">${t('noTokens')}</div>`;
+        const metrics = [
+          ['model_input_tokens','model-input',t('modelInput')],
+          ['effective_user_tokens','effective-user',t('effectiveTokens')],
+          ['saved_tokens','saved',t('tokenSaved')],
+        ];
+        const maximum = Math.max(1, ...points.flatMap(point => metrics.map(([metric]) => point.values[metric]).filter(value => value != null)));
+        const width = 320, height = 112;
+        const paths = metrics.flatMap(([metric,className]) => trendSegments(points,metric,width,height,maximum).map(segment => {
+          const quality = segment.signature.split('|')[0].replace(/[^a-z_-]/gi,'');
+          if (segment.points.length === 1) return `<circle class="trend-dot ${className}" cx="${segment.points[0][0]}" cy="${segment.points[0][1]}" r="2.5" fill="currentColor"></circle>`;
+          return `<polyline class="trend-line ${className} ${quality}" points="${segment.points.map(([x,y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')}"></polyline>`;
+        })).join('');
+        const rows = [...points].reverse().slice(0,8).map(point => `<tr><td>${esc(timeLabel(point.at) || '—')}</td><td>${esc(fmtTokens(point.values.model_input_tokens))}</td><td>${esc(fmtTokens(point.values.effective_user_tokens))}</td><td>${esc(fmtTokens(point.values.saved_tokens))}</td><td>${esc(t(qualityToken(point.quality.model_input_tokens)))}</td></tr>`).join('');
+        return `<div class="trend-wrap"><div class="trend-title"><span>${t('tokenTrend')}</span><span class="count">${points.length}</span></div>
+          <svg class="trend-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(t('tokenTrendHelp'))}"><line class="trend-grid" x1="8" y1="56" x2="312" y2="56"></line>${paths}</svg>
+          <div class="trend-legend"><span class="trend-key" style="--key:var(--blue)">${t('modelInput')}</span><span class="trend-key" style="--key:var(--purple)">${t('effectiveTokens')}</span><span class="trend-key" style="--key:var(--green)">${t('tokenSaved')}</span></div>
+          <div class="data-table-wrap" data-scroll-key="token-table"><table class="data-table"><caption class="sr-only">${t('tokenTrendHelp')}</caption><thead><tr><th>${t('time')}</th><th>${t('modelInput')}</th><th>${t('effectiveTokens')}</th><th>${t('tokenSaved')}</th><th>${t('quality')}</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      }
+
+      function lanePanel(events) {
+        const infos = ensureLaneInfos(events);
+        const groups = new Map(infos.map(info => [info.id,{info,events:[]}]))
+        events.forEach(event => {
+          const info = ensureLaneInfo(event);
+          if (!groups.has(info.id)) groups.set(info.id,{info,events:[]});
+          groups.get(info.id).events.push(event);
+        });
+        const visible = [...groups.values()].filter(group => group.events.length).slice(0,LANE_LIMIT);
+        if (!visible.length) return `<div class="empty">${t('noEvents')}</div>`;
+        return `<div class="lane-list" data-scroll-key="lanes" role="list" aria-label="${esc(t('agentLanes'))}">${visible.map(group => {
+          const items = group.events.slice(-LANE_EVENT_LIMIT).map(event => `<button type="button" class="lane-event ${eventStatus(event?.status)}" data-jump-seq="${esc(event?.seq)}" aria-label="${esc(`${group.info.label}: ${event?.title || event?.kind || ''}; ${t(eventStatus(event?.status))}`)}" title="${esc(event?.title || event?.kind || '')}">${icon(event?.kind)}</button>`).join('');
+          return `<div class="lane-row" role="listitem"><div class="lane-label" title="${esc(group.info.label)}">${esc(group.info.label)}</div><div class="lane-track">${items}</div></div>`;
+        }).join('')}</div><div class="timeline-summary">${t('laneHelp')}</div>`;
+      }
+
+      function normalizeHistory(value) {
+        const runs = Array.isArray(value) ? value : Array.isArray(value?.runs) ? value.runs : [];
+        return runs.filter(run => run && typeof run === 'object').slice(-20).map((run,index) => ({
+          index, generation:typeof run.generation === 'string' ? run.generation : '', order:finite(run.order ?? run.generation_order),
+          started_at:typeof run.started_at === 'string' ? run.started_at : '', finished_at:typeof run.finished_at === 'string' ? run.finished_at : '',
+          status:typeof run.status === 'string' ? run.status.slice(0,24) : '', complete:run.complete === true,
+          metrics:run.metrics && typeof run.metrics === 'object' ? run.metrics : {},
+        }));
+      }
+
+      function currentMetrics(events) {
+        const runs = events.filter(event => ['command','test','build','verify'].includes(event.kind));
+        const snap = snapshotAt(events), token = data?.token_usage || {}, aggregate = data?.aggregates || {};
+        ensureLaneInfos(events);
+        const latestEdit = [...events].reverse().find(event => event.kind === 'edit' && event.data);
+        return {
+          events:finite(aggregate.total_events) ?? finite(aggregate.events) ?? events.length + (finite(data?.observability?.events_dropped) || 0),
+          checks_passed:finite(aggregate?.checks?.passed) ?? runs.filter(event => event.status === 'success').length,
+          files_changed:finite(aggregate.files_changed) ?? finite(snap.file_count) ?? (snap.files || []).length,
+          added:finite(aggregate.added) ?? finite(snap.added) ?? 0, deleted:finite(aggregate.deleted) ?? finite(snap.deleted) ?? 0,
+          model_input_tokens:finite(token.model_input_tokens), model_input_quality:String(token.field_quality?.model_input_tokens || token.quality || ''),
+          agents:finite(aggregate.agents) ?? laneAliases.size,
+          observed_duration_ms:finite(aggregate.observed_duration_ms) ?? events.reduce((sum,event) => sum + (finite(event.duration_ms) || 0),0),
+          diff_quality:String(aggregate.diff_quality || latestEdit?.data?.diff_quality || ''), complete:aggregate.complete === true,
+        };
+      }
+
+      function historyMetric(metrics, key) {
+        if (key === 'checks_passed') {
+          const nested = finite(metrics?.checks?.passed);
+          if (nested != null) return nested;
+        }
+        const aliases = {events:['total_events','events'],checks_passed:['checks_passed','passed_checks'],files_changed:['files_changed'],added:['added'],deleted:['deleted'],model_input_tokens:['model_input_tokens'],agents:['agents'],observed_duration_ms:['observed_duration_ms','duration_ms']};
+        for (const name of aliases[key] || [key]) { const value = finite(metrics?.[name]); if (value != null) return value; }
+        return null;
+      }
+
+      function deltaText(current, previous, comparable=true) {
+        if (!comparable || current == null || previous == null) return t('notComparable');
+        const delta = current - previous;
+        return `${delta > 0 ? '+' : ''}${fmtTokens(delta)}`;
+      }
+
+      function historyPanel(events) {
+        const source = historyData || normalizeHistory(data?.history || window.CODEX_BUILD_HISTORY);
+        const runs = source.filter(run => !data?.generation || run.generation !== data.generation);
+        if (!runs.length) return `<div class="empty">${t('noHistory')}</div>`;
+        if (historySelection === '' || !runs[Number(historySelection)]) historySelection = String(runs.length - 1);
+        const selected = runs[Number(historySelection)] || runs[runs.length - 1];
+        const current = currentMetrics(data?.events || []), prior = selected.metrics;
+        const completeComparable = current.complete === true && selected.complete === true;
+        const priorDiffQuality = String(prior.diff_quality || '');
+        const diffComparable = completeComparable && Boolean(current.diff_quality) && Boolean(priorDiffQuality) && priorDiffQuality === current.diff_quality;
+        const tokenQuality = String(prior.model_input_quality || prior.token_quality || '');
+        const tokenComparable = completeComparable && Boolean(current.model_input_quality) && Boolean(tokenQuality) && current.model_input_quality === tokenQuality;
+        const definitions = [
+          [t('events'),'events',completeComparable],[t('passed'),'checks_passed',completeComparable],[t('filesChanged'),'files_changed',diffComparable],
+          [t('addedLines'),'added',diffComparable],[t('deletedLines'),'deleted',diffComparable],[t('modelInputTokens'),'model_input_tokens',tokenComparable],
+          [t('agents'),'agents',completeComparable],[t('durationMetric'),'observed_duration_ms',completeComparable],
+        ];
+        const rows = definitions.map(([label,key,comparable]) => {
+          const before = historyMetric(prior,key), now = current[key];
+          return `<tr><th>${esc(label)}</th><td>${esc(fmtTokens(now))}</td><td>${esc(fmtTokens(before))}</td><td title="${!comparable ? esc(t('notComparable')) : ''}">${esc(deltaText(now,before,comparable))}</td></tr>`;
+        }).join('');
+        const options = runs.map((run,index) => `<option value="${index}" ${String(index)===historySelection?'selected':''}>${esc(`${t('priorRun')} ${index+1} · ${run.finished_at ? new Date(run.finished_at).toLocaleDateString() : run.status || '—'}`)}</option>`).join('');
+        return `<div class="history-body"><label class="field"><span>${t('priorRun')}</span><select id="historyRun" class="history-select">${options}</select></label>${completeComparable ? '' : `<div class="timeline-summary">${t('partialRun')}</div>`}<div class="data-table-wrap" data-scroll-key="history-table"><table class="data-table"><thead><tr><th>${t('metric')}</th><th>${t('current')}</th><th>${t('previous')}</th><th>${t('delta')}</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+      }
+
+      function setCursorIndex(index, followLive=false) {
+        const events = Array.isArray(data?.events) ? data.events : [];
+        cursor = clamp(Math.trunc(numberOr(index)), 0, events.length);
+        live = followLive && cursor === events.length;
+        cursorSeq = live || cursor === 0 ? null : events[cursor - 1]?.seq ?? null;
+      }
+
+      function cursorForSeq(events, selectedSeq) {
+        const exact = events.findIndex(event => String(event?.seq) === String(selectedSeq));
+        if (exact >= 0) return exact + 1;
+        const target = finite(selectedSeq);
+        if (target == null) return 0;
+        let boundary = 0;
+        for (let index = 0; index < events.length; index += 1) {
+          const seq = finite(events[index]?.seq);
+          if (seq != null && seq <= target) boundary = index + 1;
+        }
+        return boundary;
+      }
+
+      function receive(next) {
+        if (!next || !Array.isArray(next.events)) return;
+        next = {...next, events:next.events.filter(event => event && typeof event === 'object')};
+        const wasLatest = !data || live;
+        const selectedSeq = data && !wasLatest ? cursorSeq : null;
+        if (data) {
+          const nextGeneration = traceGeneration(next), currentGeneration = traceGeneration(data);
+          const sameGeneration = nextGeneration == null && currentGeneration == null ? true : nextGeneration === currentGeneration;
+          const nextRevision = finite(next.revision), currentRevision = finite(data.revision);
+          const nextOrder = finite(next.generation_order), currentOrder = finite(data.generation_order);
+          if (sameGeneration && nextRevision != null && currentRevision != null && nextRevision <= currentRevision) return;
+          if (!sameGeneration && nextOrder != null && currentOrder != null && nextOrder < currentOrder) return;
+          if (!sameGeneration) {
+            stopPlayback();
+            resetUiState();
+            const hasEmbeddedHistory = Object.prototype.hasOwnProperty.call(next,'history');
+            historyData = hasEmbeddedHistory ? normalizeHistory(next.history) : null;
+            data = next;
+            live = true;
+            cursor = data.events.length;
+            cursorSeq = null;
+            knownRevision = finite(data.revision);
+            knownGeneration = traceGeneration(data);
+            render();
+            if (!window.CODEX_TRACE_STANDALONE && !hasEmbeddedHistory) reloadHistory();
+            return;
+          }
+        }
+        data = next;
+        knownRevision = finite(data.revision);
+        knownGeneration = traceGeneration(data);
+        if (data.history) historyData = normalizeHistory(data.history);
+        if (live || wasLatest) {
+          cursor = data.events.length;
+          cursorSeq = null;
+        } else if (selectedSeq != null) {
+          cursor = cursorForSeq(data.events, selectedSeq);
+          cursorSeq = cursor === 0 ? null : data.events[cursor - 1]?.seq ?? null;
+          live = false;
+        } else {
+          cursor = 0;
+          cursorSeq = null;
+          live = false;
+        }
+        render();
+      }
+      window.__codexTraceReceive = receive;
+
+      function receiveHistory(next) {
+        historyData = normalizeHistory(next);
+        historySelection = '';
+        if (data) render();
+      }
+      window.__codexHistoryReceive = receiveHistory;
+      window.__codexTraceMeta = next => { window.CODEX_BUILD_META = next; };
+      window.__codexTraceMetaReceive = window.__codexTraceMeta;
+
+      function render() {
+        if (!data) return;
+        const savedView = rememberViewState();
+        document.documentElement.lang = currentLang() === 'zh' ? 'zh-CN' : 'en';
+        document.title = `${data.title} · Codex Build Visualizer`;
+        const events = visibleEvents(), plan = planAt(events), snap = snapshotAt(events), tokenUsage = tokensAt(events);
+        const laneInfos = ensureLaneInfos(events);
+        const filtered = filteredTimeline(events), ordered = [...filtered].reverse();
+        const pageCount = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+        timelinePage = clamp(timelinePage,0,pageCount-1);
+        const pageStart = timelinePage * PAGE_SIZE, pageEvents = ordered.slice(pageStart,pageStart+PAGE_SIZE);
+        const omittedEvents = Math.max(0, numberOr(data?.observability?.events_dropped));
+        const done = plan.filter(p => p.status === 'completed').length;
+        const percent = plan.length ? Math.round(done / plan.length * 100) : 0;
+        const runs = events.filter(e => ['command','test','build','verify'].includes(e.kind));
+        const passed = runs.filter(e => e.status === 'success').length;
+        const toolCalls = events.filter(e => e.kind === 'tool').length;
+        const compactions = events.filter(e => e.kind === 'context' && e.status === 'success').length;
+        const agents = events.filter(e => e.kind === 'agent' && e.status === 'running').length;
+        const observedMs = events.reduce((sum,e) => sum + Math.max(0,numberOr(e?.duration_ms)), 0);
+        const tokenFields = ['model_input_tokens','cached_input_tokens','model_output_tokens','reasoning_output_tokens','user_visible_tokens','effective_user_tokens','candidate_context_tokens','retained_context_tokens','saved_tokens'];
+        const hasTokens = tokenUsage && tokenFields.some(key => tokenUsage[key] != null);
+        const userVisible = finite(tokenUsage?.user_visible_tokens), effectiveUser = finite(tokenUsage?.effective_user_tokens);
+        const candidateContext = finite(tokenUsage?.candidate_context_tokens), savedTokens = finite(tokenUsage?.saved_tokens);
+        const effectiveRate = hasTokens && userVisible > 0 && effectiveUser != null ? Math.round(effectiveUser / userVisible * 100) : 0;
+        const savingRate = hasTokens && candidateContext > 0 && savedTokens != null ? Math.round(savedTokens / candidateContext * 100) : 0;
+        const metricQuality = key => tokenUsage?.field_quality?.[key] || tokenUsage?.quality || 'unavailable';
+        const miniQuality = key => `<span class="mini-quality">${esc(t(metricQuality(key)))}</span>`;
+        const statusLabel = data.status === 'completed' ? t('complete') : data.status === 'failed' ? t('failed') : t('live');
+        const statusClass = data.status === 'active' ? '' : 'done';
+        const timeline = pageEvents.length ? pageEvents.map((e,index) => `
+          <article class="event ${eventStatus(e?.status)}" role="listitem" aria-posinset="${pageStart+index+1}" aria-setsize="${filtered.length}" data-seq="${esc(e?.seq)}">
+            <div class="event-icon" aria-hidden="true">${icon(e?.kind)}</div>
+            <div class="event-main">
+              <div class="event-meta"><span class="event-title">${esc(e?.title)}</span><span class="event-status">${esc(t(eventStatus(e?.status)))}</span><time class="event-time">${esc(timeLabel(e?.at))}</time></div>
+              ${e?.detail ? `<div class="event-detail">${esc(e.detail)}</div>` : ''}
+              ${e?.data?.command ? `<div class="event-command">${esc(e.data.command)}</div>` : ''}
+              ${testEvidence(e.data?.tests)}
+              ${e.data?.output_excerpt ? `<pre class="event-output">${esc(e.data.output_excerpt)}</pre>` : ''}
+            </div>
+          </article>`).join('') : `<div class="empty">${t('noEvents')}</div>`;
+        const planRows = plan.length ? plan.slice(0,PANEL_LIMIT).map(p => { const status=planStatus(p?.status); return `<div class="plan-row"><span class="plan-check ${status}">${status === 'completed' ? '✓' : status === 'blocked' ? '!' : ''}</span><span>${esc(p?.title)}</span><span class="plan-state">${esc(t(status))}</span></div>`; }).join('') : `<div class="empty">${t('noEvents')}</div>`;
+        const visibleFiles = (Array.isArray(snap?.files) ? snap.files : []).filter(file => file && typeof file === 'object').slice(0,PANEL_LIMIT);
+        const fileRows = visibleFiles.length ? visibleFiles.map(f => { const status=fileStatus(f?.status); return `<div class="file-row"><span class="file-type ${status}">${status === 'added' ? 'A' : status === 'deleted' ? 'D' : 'M'}</span><span class="file-name" title="${esc(f?.path)}">${esc(f?.path)}</span><span class="delta"><span class="plus">+${esc(countText(f?.added))}</span><span class="minus">-${esc(countText(f?.deleted))}</span></span></div>`; }).join('') : `<div class="empty">${t('noFiles')}</div>`;
+        const visibleRuns = runs.slice(-PANEL_LIMIT).reverse();
+        const runRows = visibleRuns.length ? visibleRuns.map(r => { const status=eventStatus(r?.status); return `<div class="run-row"><div class="run-top"><span class="run-status ${status}" aria-hidden="true"></span><span class="run-status-label">${esc(t(status))}</span><span class="run-title">${esc(r?.title)}</span><span class="run-duration">${esc(duration(r?.duration_ms))}</span></div>${r?.data?.command ? `<div class="run-command">${esc(r.data.command)}</div>` : ''}${testEvidence(r?.data?.tests)}${r?.data?.output_excerpt ? `<pre class="event-output">${esc(r.data.output_excerpt)}</pre>` : ''}</div>`; }).join('') : `<div class="empty">${t('noRuns')}</div>`;
+        const activityPanel = `<div class="activity-grid"><div class="activity-metric"><div class="token-label">${t('tools')}</div><div class="activity-value">${esc(countText(toolCalls))}</div></div><div class="activity-metric"><div class="token-label">${t('compactions')}</div><div class="activity-value">${esc(countText(compactions))}</div></div><div class="activity-metric"><div class="token-label">${t('agents')}</div><div class="activity-value">${esc(countText(agents))}</div></div><div class="activity-metric"><div class="token-label">${t('observedTime')}</div><div class="activity-value">${esc(duration(observedMs))}</div></div></div>`;
+        const tokenPanel = hasTokens ? `<div class="token-body">
+          <div class="token-hero"><div><div class="token-label">${t('effectiveTokens')}</div><div class="token-value">${esc(fmtTokens(tokenUsage.effective_user_tokens))}</div></div><div class="token-ratio">${esc(countText(effectiveRate))}% / ${esc(fmtTokens(tokenUsage.user_visible_tokens))}</div></div>
+          <div class="token-bar"><span style="width:${Math.max(0,Math.min(100,effectiveRate))}%"></span></div>
+          <div class="token-grid">
+            <div class="token-metric"><div class="token-label">${t('modelInput')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.model_input_tokens))}${miniQuality('model_input_tokens')}</div></div>
+            <div class="token-metric"><div class="token-label">${t('cachedInput')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.cached_input_tokens))}${miniQuality('cached_input_tokens')}</div></div>
+            <div class="token-metric"><div class="token-label">${t('modelOutput')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.model_output_tokens))}${miniQuality('model_output_tokens')}</div></div>
+            <div class="token-metric"><div class="token-label">${t('reasoningOutput')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.reasoning_output_tokens))}${miniQuality('reasoning_output_tokens')}</div></div>
+            <div class="token-metric"><div class="token-label">${t('candidateContext')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.candidate_context_tokens))}${miniQuality('candidate_context_tokens')}</div></div>
+            <div class="token-metric"><div class="token-label">${t('retainedContext')}</div><div class="token-metric-value">${esc(fmtTokens(tokenUsage.retained_context_tokens))}${miniQuality('retained_context_tokens')}</div></div>
+          </div>
+          <div class="token-source">${t('source')}: ${esc(tokenUsage.source || '—')}${tokenUsage.method ? `<br>${t('method')}: ${esc(tokenUsage.method)}` : ''}</div>
+        </div>${tokenTrendPanel(tokenPoints(events))}` : `<div class="empty">${t('noTokens')}</div>`;
+        const kindValues = [...new Set(events.map(event => event.kind).filter(value => typeof value === 'string'))].slice(0,40);
+        const statusValues = [...new Set(events.map(event => eventStatus(event?.status)))].slice(0,20);
+        const option = (value,label,current) => `<option value="${esc(value)}" ${value===current?'selected':''}>${esc(label)}</option>`;
+        app.innerHTML = `<div class="shell">
+          <header class="topbar">
+            <div><div class="brand"><div class="mark">C</div><div><div class="brand-name">Codex Build Visualizer</div><div class="eyebrow">Observable build trace</div></div></div><h1>${esc(data.title)}</h1><div class="project">${t('project')}: ${esc(data.project_name)}</div></div>
+            <div class="actions"><div class="pill"><span>${t('privacyMode')}: ${esc(data.privacy_mode || 'standard')}</span></div><div class="pill"><span class="live-dot ${statusClass}" aria-hidden="true"></span><span>${statusLabel}</span></div><button type="button" class="icon-button" id="langButton" title="Language" aria-label="Language">${currentLang() === 'zh' ? '中 / EN' : 'EN / 中'}</button></div>
+          </header>
+          <section class="stats">
+            <div class="card stat" style="--accent:var(--purple)"><div class="stat-label">${t('progress')}</div><div class="stat-value">${esc(countText(percent))}%</div><div class="stat-note">${esc(countText(done))} / ${esc(countText(plan.length))}</div></div>
+            <div class="card stat" style="--accent:var(--blue)"><div class="stat-label">${t('changed')}</div><div class="stat-value">${esc(countText(snap?.file_count))}</div><div class="stat-note">${esc(countText(visibleFiles.filter(f=>fileStatus(f?.status)==='added').length))} ${t('added')} · ${esc(countText(visibleFiles.filter(f=>fileStatus(f?.status)==='modified').length))} ${t('modified')}</div></div>
+            <div class="card stat" style="--accent:var(--green)"><div class="stat-label">${t('lines')}</div><div class="stat-value"><span class="plus">+${esc(countText(snap?.added))}</span> <span class="minus">-${esc(countText(snap?.deleted))}</span></div><div class="stat-note">${snap?.diff_quality === 'exact' ? t('exactDiff') : snap?.diff_quality === 'metadata' ? t('metadataDiff') : snap?.diff_quality === 'partial' ? t('partialDiff') : t('netDiff')}</div></div>
+            <div class="card stat" style="--accent:var(--amber)"><div class="stat-label">${t('checks')}</div><div class="stat-value">${esc(countText(passed))}/${esc(countText(runs.length))}</div><div class="stat-note">${esc(countText(runs.length ? Math.round(passed/runs.length*100) : 0))}% pass rate</div></div>
+            <div class="card stat" style="--accent:var(--purple)"><div class="stat-label">${t('effectiveTokens')}</div><div class="stat-value">${hasTokens ? esc(fmtTokens(tokenUsage.effective_user_tokens)) : '—'}</div><div class="stat-note">${hasTokens ? `${esc(countText(effectiveRate))}% / ${esc(fmtTokens(tokenUsage.user_visible_tokens))} · ${esc(t(metricQuality('effective_user_tokens')))}` : t('unavailable')}</div></div>
+            <div class="card stat" style="--accent:var(--blue)"><div class="stat-label">${t('tokenSaved')}</div><div class="stat-value">${hasTokens ? esc(fmtTokens(tokenUsage.saved_tokens)) : '—'}</div><div class="stat-note">${hasTokens ? `${esc(countText(savingRate))}% · ${esc(t(metricQuality('saved_tokens')))}` : t('unavailable')}</div></div>
+          </section>
+          <section class="layout">
+            <div class="stack">
+              <section class="card section"><div class="section-head"><span class="section-title">${t('plan')}</span><span class="count">${esc(countText(percent))}%${plan.length>PANEL_LIMIT?` · ${t('latestLimited')} ${PANEL_LIMIT}`:''}</span></div><div class="plan-list">${planRows}</div><div class="progress-track"><div class="progress-fill" style="width:${percent}%"></div></div></section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('activity')}</span><span class="count">${esc(countText(events.length))} ${events.length===1?t('step'):t('steps')}</span></div>
+                <div class="timeline-tools"><label class="field"><span>${t('search')}</span><input id="eventSearch" type="search" maxlength="200" value="${esc(query)}" placeholder="${esc(t('searchHint'))}" autocomplete="off"></label>
+                  <label class="field"><span>${t('kind')}</span><select id="kindFilter">${option('all',t('all'),kindFilter)}${kindValues.map(value=>option(value,t(value),kindFilter)).join('')}</select></label>
+                  <label class="field"><span>${t('status')}</span><select id="statusFilter">${option('all',t('all'),statusFilter)}${statusValues.map(value=>option(value,t(value),statusFilter)).join('')}</select></label>
+                  <label class="field"><span>${t('lane')}</span><select id="laneFilter">${option('all',t('all'),laneFilter)}${laneInfos.map(info=>option(info.id,info.label,laneFilter)).join('')}</select></label></div>
+                <div id="resultStatus" class="timeline-summary" role="status" aria-live="polite">${esc(countText(filtered.length))} ${t('matches')} · ${t('page')} ${esc(countText(timelinePage+1))}/${esc(countText(pageCount))}</div>
+                ${omittedEvents ? `<div class="retention-warning">${esc(fmtTokens(omittedEvents))} ${t('retention')}</div>` : ''}<div class="timeline" data-scroll-key="timeline" role="list" aria-label="${esc(t('activity'))}">${timeline}</div>
+                <nav class="pagination" aria-label="${esc(t('activity'))}"><button type="button" id="newerPage" class="page-button" ${timelinePage===0?'disabled':''}>${t('newer')}</button><span class="page-label">${t('page')} ${esc(countText(timelinePage+1))} / ${esc(countText(pageCount))}</span><button type="button" id="olderPage" class="page-button" ${timelinePage>=pageCount-1?'disabled':''}>${t('older')}</button></nav></section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('agentLanes')}</span><span class="count">${esc(countText(laneAliases.size + (laneOverflowSeen ? 1 : 0)))}</span></div>${lanePanel(events)}</section>
+            </div>
+            <aside class="stack">
+              <section class="card section"><div class="section-head"><span class="section-title">${t('tokenEfficiency')}</span><span class="quality-badge ${qualityToken(tokenUsage?.quality)}">${esc(t(qualityToken(tokenUsage?.quality)))}</span></div>${tokenPanel}</section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('observed')}</span><span class="count">${events.length}</span></div>${activityPanel}</section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('files')}</span><span class="count">${esc(countText(snap?.file_count))}${(Array.isArray(snap?.files)?snap.files:[]).length>PANEL_LIMIT?` · ${t('latestLimited')} ${PANEL_LIMIT}`:''}</span></div><div class="file-list" data-scroll-key="files">${fileRows}</div></section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('runs')}</span><span class="count">${esc(countText(runs.length))}${runs.length>PANEL_LIMIT?` · ${t('latestLimited')} ${PANEL_LIMIT}`:''}</span></div><div class="run-list" data-scroll-key="runs">${runRows}</div></section>
+              <section class="card section"><div class="section-head"><span class="section-title">${t('history')}</span></div>${historyPanel(events)}</section>
+              <section class="card privacy"><strong>${t('privacy')}.</strong> ${t('privacyText')}</section>
+            </aside>
+          </section>
+          <section class="card replay"><button type="button" class="play" id="playButton" aria-label="${t('replay')}">${playing ? 'Ⅱ' : '▶'}</button><div class="scrub"><label class="sr-only" for="scrubber">${t('replayPosition')}</label><input id="scrubber" type="range" min="0" max="${data.events.length}" value="${cursor}" step="1" aria-label="${t('replayPosition')}" aria-valuetext="${esc(`${cursor} / ${data.events.length}`)}"><div class="replay-label"><span>${t('replay')}</span><span>${live ? t('live') : ''}</span></div></div><div class="frame">${esc(countText(cursor))} / ${esc(countText(data.events.length))}</div></section>
+        </div>`;
+        document.getElementById('langButton').onclick = () => { languageOverride = currentLang() === 'zh' ? 'en' : 'zh'; render(); };
+        document.getElementById('scrubber').oninput = e => { const index=numberOr(e.target.value); setCursorIndex(index,index===data.events.length); timelinePage=0; stopPlayback(); render(); };
+        document.getElementById('playButton').onclick = () => playing ? stopPlayback(true) : startPlayback();
+        document.getElementById('eventSearch').oninput = event => {
+          query = event.target.value.slice(0,200);
+          if (searchTimer) clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => { timelinePage=0; render(); },120);
+        };
+        document.getElementById('kindFilter').onchange = event => { kindFilter=event.target.value; timelinePage=0; render(); };
+        document.getElementById('statusFilter').onchange = event => { statusFilter=event.target.value; timelinePage=0; render(); };
+        document.getElementById('laneFilter').onchange = event => { laneFilter=event.target.value; timelinePage=0; render(); };
+        document.getElementById('newerPage').onclick = () => { timelinePage=Math.max(0,timelinePage-1); render(); };
+        document.getElementById('olderPage').onclick = () => { timelinePage=Math.min(pageCount-1,timelinePage+1); render(); };
+        document.querySelectorAll('[data-jump-seq]').forEach(button => button.onclick = () => {
+          const index = data.events.findIndex(event => String(event.seq) === button.dataset.jumpSeq);
+          if (index >= 0) { setCursorIndex(index+1,index+1===data.events.length); timelinePage=0; stopPlayback(); render(); }
+        });
+        const historyRun = document.getElementById('historyRun');
+        if (historyRun) historyRun.onchange = event => { historySelection=event.target.value; render(); };
+        restoreViewState(savedView);
+      }
+      function startPlayback() {
+        if (!data?.events.length) return;
+        if (cursor >= data.events.length) setCursorIndex(0,false);
+        live = false; playing = true; render();
+        playTimer = setInterval(() => { const next=cursor+1; setCursorIndex(next,next>=data.events.length); if (cursor >= data.events.length) stopPlayback(); render(); }, 700);
+      }
+      function stopPlayback(redraw=false) { playing = false; if (playTimer) clearInterval(playTimer); playTimer = null; if (redraw) render(); }
+
+      function externalScript(source, loaded, failed, timeoutMs=8000) {
+        const script = document.createElement('script');
+        let settled = false, timeout = null;
+        const finish = callback => {
+          if (settled) return;
+          settled = true;
+          if (timeout) clearTimeout(timeout);
+          script.remove();
+          callback();
+        };
+        script.src = source;
+        script.async = true;
+        script.onload = () => finish(loaded);
+        script.onerror = () => finish(failed);
+        timeout = setTimeout(() => finish(failed),timeoutMs);
+        document.body.appendChild(script);
+      }
+
+      function schedulePoll(delay=1500) {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(poll,delay);
+      }
+
+      function loadEventsThenPoll() {
+        externalScript(`events.js?v=${Date.now()}`, () => {
+          receive(window.CODEX_BUILD_TRACE);
+          pollBusy = false;
+          schedulePoll();
+        }, () => {
+          pollBusy = false;
+          schedulePoll(3000);
+        });
+      }
+
+      function reloadHistory() {
+        if (window.CODEX_TRACE_STANDALONE) return;
+        historyRequest += 1;
+        if (historyLoading) { historyReloadPending = true; return; }
+        const request = historyRequest;
+        const generation = knownGeneration;
+        historyLoading = true;
+        window.CODEX_BUILD_HISTORY = null;
+        externalScript(`history.js?v=${Date.now()}`, () => {
+          const stale = request !== historyRequest || generation !== knownGeneration;
+          if (!stale && window.CODEX_BUILD_HISTORY) receiveHistory(window.CODEX_BUILD_HISTORY);
+          historyLoading = false;
+          if (stale || historyReloadPending) { historyReloadPending = false; reloadHistory(); }
+        }, () => {
+          const retry = request !== historyRequest || generation !== knownGeneration || historyReloadPending;
+          historyLoading = false;
+          historyReloadPending = false;
+          if (retry) reloadHistory();
+        });
+      }
+
+      function poll() {
+        if (document.hidden) { schedulePoll(1500); return; }
+        if (pollBusy) return;
+        pollBusy = true;
+        if (metaSupported === false && metaFallbackPolls < 3) { metaFallbackPolls += 1; loadEventsThenPoll(); return; }
+        window.CODEX_BUILD_META = null;
+        externalScript(`meta.js?v=${Date.now()}`, () => {
+          const meta = window.CODEX_BUILD_META;
+          if (!meta || typeof meta !== 'object') { metaSupported=false; metaFallbackPolls=0; loadEventsThenPoll(); return; }
+          const revision = finite(meta.revision), generation = traceGeneration(meta);
+          if (revision == null && generation == null) { metaSupported=false; metaFallbackPolls=0; loadEventsThenPoll(); return; }
+          metaSupported=true;
+          metaFallbackPolls=0;
+          if (generation !== knownGeneration || (revision != null && (knownRevision == null || revision > knownRevision))) loadEventsThenPoll();
+          else { pollBusy=false; schedulePoll(); }
+        }, () => { metaSupported=false; metaFallbackPolls=0; loadEventsThenPoll(); });
+      }
+
+      receive(window.CODEX_BUILD_TRACE);
+      if (!window.CODEX_TRACE_STANDALONE) {
+        if (window.CODEX_BUILD_HISTORY) receiveHistory(window.CODEX_BUILD_HISTORY);
+        else reloadHistory();
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) schedulePoll(0); });
+        schedulePoll(1500);
+      }
+    })();
+  </script>
+</body>
+</html>

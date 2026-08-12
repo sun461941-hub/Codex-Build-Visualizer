@@ -1,0 +1,14 @@
+interface:
+  display_name: Codex Build Visualizer
+  short_description: Visualize Codex coding work
+  default_prompt: Use $codex-build-visualizer to create a privacy-enhanced live trace
+    of this coding task, including tests, Token usage, and context optimization.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  allow_implicit_invocation: true
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
