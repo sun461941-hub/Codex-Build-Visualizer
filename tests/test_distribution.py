@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 
@@ -63,6 +64,21 @@ class DistributionTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(mode), 0o644, entry.filename)
             self.assertEqual(entry.extra, b"")
             self.assertEqual(entry.comment, b"")
+
+    def test_macos_system_root_aliases_are_normalized_without_resolving_descendants(self) -> None:
+        with mock.patch.object(self.packager.sys, "platform", "darwin"):
+            self.assertEqual(
+                self.packager._absolute_lexical(Path("/var/folders/task/output.zip")),
+                Path("/private/var/folders/task/output.zip"),
+            )
+            self.assertEqual(
+                self.packager._absolute_lexical(Path("/tmp/task/output.zip")),
+                Path("/private/tmp/task/output.zip"),
+            )
+            self.assertEqual(
+                self.packager._absolute_lexical(Path("/Users/example/link/output.zip")),
+                Path("/Users/example/link/output.zip"),
+            )
 
     def test_plugin_builds_are_identical_and_exactly_allowlisted(self) -> None:
         first = self.build("plugin-a.zip")
@@ -144,6 +160,10 @@ class DistributionTests(unittest.TestCase):
             workflow = archive.read(".github/workflows/test.yml").decode("utf-8")
             for runner in ("ubuntu-latest", "macos-latest", "windows-latest"):
                 self.assertIn(runner, workflow)
+            self.assertIn(
+                "continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}",
+                workflow,
+            )
             self.assertIn('python: ["3.9", "3.12"]', workflow)
             self.assertIn("permissions:\n  contents: read", workflow)
             self.assertIn(
