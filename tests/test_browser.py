@@ -100,13 +100,14 @@ class BrowserTests(unittest.TestCase):
 const {chromium} = require('playwright');
 const path = require('path');
 (async () => {
-  const browser = await chromium.launch({headless:true, executablePath:process.argv[2]});
+  // With `node script.js html chromium`, Node keeps the script at argv[1].
+  const browser = await chromium.launch({headless:true, executablePath:process.argv[3]});
   const context = await browser.newContext({viewport:{width:320,height:720}, reducedMotion:'reduce'});
   const page = await context.newPage();
   const failures = [], requests = [];
   page.on('pageerror', error => failures.push(String(error)));
   page.on('request', request => requests.push(request.url()));
-  await page.goto('file://' + path.resolve(process.argv[1]), {waitUntil:'load'});
+  await page.goto('file://' + path.resolve(process.argv[2]), {waitUntil:'load'});
   await page.locator('#eventSearch').waitFor();
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   assert(await page.locator('.event').count() === 100, 'timeline DOM must be bounded');

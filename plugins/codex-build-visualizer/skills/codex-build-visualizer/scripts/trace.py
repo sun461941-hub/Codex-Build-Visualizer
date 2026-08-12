@@ -3287,6 +3287,7 @@ def command_export(args: argparse.Namespace) -> int:
                 raise SystemExit("Export privacy scan found risky content in history summaries; export was refused.")
         extension = {"html": ".html", "markdown": ".md", "json": ".json"}[args.format]
         managed = trace_dir(root).resolve()
+        managed_relative: Path | None = None
         if args.output:
             supplied = Path(args.output).expanduser()
             lexical = Path(os.path.abspath(supplied))
@@ -3300,15 +3301,21 @@ def command_export(args: argparse.Namespace) -> int:
                 # Keep managed components unresolved so the no-follow writer can
                 # reject a planted export-directory symlink.
                 destination = lexical
+                managed_relative = lexical_relative
             else:
                 parent = supplied.parent.resolve()
                 destination = parent / supplied.name
         else:
             destination = trace_dir(root) / "export" / f"trace{extension}"
-        try:
-            managed_relative = destination.parent.resolve().relative_to(managed)
-        except ValueError:
-            managed_relative = None
+            managed_relative = Path("export")
+        # For a lexically managed destination, retain that classification.
+        # Resolving the parent here would follow a planted export symlink and
+        # incorrectly reclassify the target as an unrelated external path.
+        if managed_relative is None:
+            try:
+                managed_relative = destination.parent.resolve().relative_to(managed)
+            except ValueError:
+                managed_relative = None
         if managed_relative is not None and (not managed_relative.parts or managed_relative.parts[0] != "export"):
             raise SystemExit("Refusing to export over managed trace state; choose a path outside .codex-visualizer or inside its export directory.")
         private_parent = managed_relative is not None and bool(managed_relative.parts) and managed_relative.parts[0] == "export"

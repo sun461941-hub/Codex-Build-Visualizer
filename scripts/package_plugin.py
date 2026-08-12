@@ -501,21 +501,9 @@ def _write_zip(destination: Union[Path, BinaryIO], entries: dict[str, bytes]) ->
 
 
 def _publish_exclusive(temporary: Path, output: Path) -> None:
-    try:
-        os.link(temporary, output)
-        return
-    except FileExistsError as error:
-        raise PackagingError(f"output already exists: {output}") from error
-    except OSError as error:
-        if error.errno not in {
-            errno.EPERM,
-            errno.EACCES,
-            errno.ENOSYS,
-            errno.ENOTSUP,
-            getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
-        }:
-            raise PackagingError(f"could not publish output safely: {output}") from error
-
+    # The Windows implementation of os.link varies by filesystem, privilege,
+    # developer-mode and runner configuration.  An exclusive destination open
+    # provides the same no-overwrite guarantee without depending on hard links.
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     try:
         destination = os.open(output, flags, 0o600)
